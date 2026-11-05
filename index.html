@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>교내 소음억제 프로젝트</title>
+<style>
+:root{font-family:system-ui,-apple-system,"Malgun Gothic",sans-serif;color:#172033;background:#f4f6fa}
+*{box-sizing:border-box}body{margin:0}header{background:#172b4d;color:#fff;padding:24px max(20px,calc((100% - 1180px)/2))}
+header h1{margin:0 0 6px;font-size:clamp(23px,3vw,32px)}header p{margin:0;color:#dce6f6}
+main{max-width:1180px;margin:24px auto;padding:0 18px 40px;display:grid;grid-template-columns:1.2fr .8fr;gap:18px}
+.card{background:#fff;border:1px solid #e3e8f0;border-radius:16px;padding:20px;box-shadow:0 5px 18px #1b2a4410;min-width:0}
+.wide{grid-column:1/-1}h2{font-size:18px;margin:0 0 15px}h3{font-size:15px;margin:16px 0 8px}
+label{display:block;font-size:13px;font-weight:700;margin:12px 0 6px;color:#344054}
+input[type=text],input[type=url],input[type=number],select{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:10px;font:inherit;background:#fff}
+button{border:0;border-radius:9px;padding:10px 14px;font:inherit;font-weight:700;cursor:pointer;background:#e8edf5;color:#1d2a40}
+button.primary{background:#2463eb;color:#fff}button.danger{background:#c62828;color:#fff}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.status{padding:15px;border-radius:12px;background:#edf1f7;display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.status .lamp{width:16px;height:16px;border-radius:50%;background:#7b8798;flex:none}.status.normal{background:#e7f8ed;color:#17663a}.status.normal .lamp{background:#20a45a}
+.status.caution{background:#fff6d9;color:#855b00}.status.caution .lamp{background:#e6a700}
+.status.alarm{background:#ffebeb;color:#a51d1d}.status.alarm .lamp{background:#d92d20;animation:pulse .8s infinite}
+@keyframes pulse{50%{opacity:.25}}.muted{color:#667085;font-size:13px}.pill{display:inline-block;border-radius:20px;background:#eef2f7;padding:5px 9px;font-size:12px}
+.bar-row{display:grid;grid-template-columns:minmax(70px,1fr) 3fr 54px;gap:10px;align-items:center;margin:11px 0;font-size:13px}
+.track{height:10px;background:#e9edf3;border-radius:10px;overflow:hidden}.fill{height:100%;width:0;background:#3676ef;transition:width .15s}
+#log{max-height:240px;overflow:auto}.logitem{padding:10px 0;border-bottom:1px solid #edf0f5;font-size:13px}
+#eventLog{max-height:180px;overflow:auto;background:#101828;color:#d1e5ff;border-radius:9px;padding:10px;font:12px/1.6 ui-monospace,monospace;white-space:pre-wrap}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat{background:#f5f7fb;border-radius:10px;padding:12px}.stat strong{display:block;font-size:24px}.hidden{display:none!important}
+.note{border-left:4px solid #f0b429;padding:10px 12px;background:#fff8e6;border-radius:5px;font-size:13px;line-height:1.5}
+@media(max-width:780px){main{grid-template-columns:1fr}.wide{grid-column:auto}.stats{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<header><h1>🔊 교내 소음억제 프로젝트</h1><p>AI가 소음을 감지하면 micro:bit 경광등과 부저로 주의를 줍니다.</p></header>
+<main>
+<section class="card">
+<h2>1. AI 소리 인식</h2>
+<label for="modelUrl">Teachable Machine 오디오 모델 URL</label>
+<input id="modelUrl" type="url" placeholder="https://teachablemachine.withgoogle.com/models/모델ID/">
+<div class="actions"><button id="loadModel" class="primary">모델 불러오기</button><span id="modelState" class="pill">모델 미연결</span></div>
+<label for="confidence">최소 인식 신뢰도: <span id="confidenceText">80%</span></label>
+<input id="confidence" type="range" min="50" max="99" value="80" style="width:100%">
+<label for="alarmDelay">소음 경고 시작 지연 시간</label>
+<select id="alarmDelay"><option value="1">1초 (시험용)</option><option value="2" selected>2초</option><option value="3">3초</option><option value="5">5초</option></select>
+<label for="clearDelay">소음 해제 판정 시간</label>
+<select id="clearDelay"><option value="1">1초</option><option value="2" selected>2초</option><option value="3">3초</option><option value="5">5초</option></select>
+<div class="actions"><button id="startAI" class="primary" disabled>소음 감지 시작</button><button id="stopAI" disabled>감지 중지</button></div>
+<p class="muted">브라우저가 마이크 사용 권한을 요청합니다. 소리 인식은 오디오 모델 전용 라이브러리를 사용합니다.</p>
+</section>
+
+<section class="card wide">
+<h2>테스트 모드 (모델 학습 전 사용)</h2>
+<p class="muted">Teachable Machine 모델 없이도 상태 전환과 micro:bit 명령을 시험할 수 있습니다. 실제 마이크 AI 판정이 아니라 버튼으로 동작을 확인하는 기능입니다.</p>
+<div class="actions">
+<button type="button" data-test-class="정적">정적 테스트</button>
+<button type="button" data-test-class="대화">대화 테스트</button>
+<button type="button" data-test-class="소음" class="danger">소음 테스트 (경고)</button>
+<button type="button" id="stopTest">테스트 중지</button>
+</div>
+<p id="testState" class="muted">테스트 대기 중</p>
+</section>
+
+<section class="card">
+<h2>2. 현재 상태</h2>
+<div id="statusBox" class="status"><span class="lamp"></span><div><strong id="statusTitle">준비 중</strong><div id="statusDetail" class="muted">모델을 불러오세요.</div></div></div>
+<div><span class="muted">현재 AI 판단</span><h3 id="currentClass">—</h3><p class="muted">가장 높은 확률의 클래스가 표시됩니다.</p></div>
+<h3>클래스별 인식 확률</h3><div id="predictions"><p class="muted">모델을 불러오면 여기에 표시됩니다.</p></div>
+</section>
+
+<section class="card">
+<h2>3. micro:bit USB 연결</h2>
+<div class="status"><span class="lamp" id="serialLamp"></span><div><strong id="serialState">연결되지 않음</strong><div id="serialDetail" class="muted">Chrome 또는 Edge 데스크톱에서 USB로 연결하세요.</div></div></div>
+<div class="actions"><button id="connectSerial" class="primary">micro:bit 연결</button><button id="disconnectSerial" disabled>연결 해제</button></div>
+<p class="muted">Web Serial은 HTTPS 또는 localhost에서 지원됩니다. 통신 속도는 115200bps입니다.</p>
+<h3>수동 전송 시험</h3>
+<p class="muted">아래 버튼은 선택한 클래스 이름을 그대로 전송합니다. 모델 클래스 이름과 일치해야 동작합니다.</p>
+<div id="manualButtons" class="actions"><span class="muted">먼저 모델을 불러오세요.</span></div>
+<div class="actions"><button id="manualOff">정적 전송 (경고 끄기)</button><button id="manualAlarm" class="danger">소음 전송 (경고 시험)</button></div>
+</section>
+
+<section class="card">
+<h2>4. 기록 및 통계</h2>
+<div class="stats"><div class="stat"><span class="muted">소음 감지</span><strong id="noiseCount">0</strong></div><div class="stat"><span class="muted">경고 시작</span><strong id="alarmCount">0</strong></div><div class="stat"><span class="muted">오늘 기록</span><strong id="totalCount">0</strong></div></div>
+<h3>최근 기록</h3><div id="log"><p class="muted">아직 기록이 없습니다.</p></div>
+<div class="actions"><button id="clearLog">기록 지우기</button></div>
+</section>
+
+<section class="card wide">
+<h2>5. 연결 및 오류 로그</h2>
+<div id="eventLog">웹앱 준비 완료. 모델 URL을 입력하고 모델을 불러오세요.</div>
+<div class="note" style="margin-top:14px">안전 안내: 외부 경광등과 부저를 micro:bit 핀에 직접 연결하지 마세요. 전류가 큰 부품은 드라이버 회로와 별도 전원이 필요할 수 있습니다. 교내에서는 경고음 크기와 사용 시간을 담당 교사와 먼저 확인하세요.</div>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@1.3.1/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands@0.4.0/dist/speech-commands.min.js"></script>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let recognizer = null, classLabels = [], listening = false, serialPort = null, writer = null;
+let lastSentClass = null, pendingNoiseSince = null, clearSince = null, alarmActive = false;
+let noiseCount = 0, alarmCount = 0, records = [], noiseEventOpen = false;
+let lastScores = [], testTimer = null;
+
+function logEvent(message) {
+  const stamp = new Date().toLocaleTimeString("ko-KR");
+  $("eventLog").textContent = `[${stamp}] ${message}\n` + $("eventLog").textContent;
+}
+function addRecord(label, detail) {
+  const item = {time:new Date().toLocaleString("ko-KR"), label, detail};
+  records.unshift(item); records = records.slice(0,100); renderRecords();
+}
+function renderRecords() {
+  $("log").innerHTML = "";
+  if (!records.length) { $("log").innerHTML = '<p class="muted">아직 기록이 없습니다.</p>'; }
+  records.forEach(r => {
+    const div = document.createElement("div"); div.className = "logitem";
+    const strong = document.createElement("strong"); strong.textContent = r.label + " · " + r.detail;
+    const small = document.createElement("div"); small.className = "muted"; small.textContent = r.time;
+    div.append(strong,small); $("log").appendChild(div);
+  });
+  $("noiseCount").textContent = noiseCount;
+  $("alarmCount").textContent = alarmCount;
+  $("totalCount").textContent = records.length;
+}
+function setStatus(kind,title,detail) {
+  $("statusBox").className = "status " + (kind || "");
+  $("statusTitle").textContent = title; $("statusDetail").textContent = detail;
+}
+function normalizeModelUrl(value) {
+  let url = value.trim();
+  if (!url) throw new Error("모델 URL을 입력하세요.");
+  if (!/^https:\/\/teachablemachine\.withgoogle\.com\/models\/[^/]+\/?$/i.test(url)) {
+    throw new Error("Teachable Machine의 공유 모델 URL 형식이 아닙니다. https://teachablemachine.withgoogle.com/models/모델ID/ 형식으로 입력하세요.");
+  }
+  return url.endsWith("/") ? url : url + "/";
+}
+async function loadModel() {
+  $("loadModel").disabled = true;
+  $("modelState").textContent = "불러오는 중…";
+  try {
+    if (listening) await stopAI();
+    if (recognizer) { try { recognizer.stopListening(); } catch (_) {} recognizer = null; }
+    const base = normalizeModelUrl($("modelUrl").value);
+    recognizer = speechCommands.create("BROWSER_FFT", undefined, base + "model.json", base + "metadata.json");
+    await recognizer.ensureModelLoaded();
+    classLabels = recognizer.wordLabels();
+    if (!classLabels || !classLabels.length) throw new Error("모델에서 클래스 이름을 찾지 못했습니다.");
+    $("modelState").textContent = "모델 연결 완료";
+    $("startAI").disabled = false;
+    renderPredictions(classLabels.map(label => ({label, probability:0})));
+    renderManualButtons();
+    logEvent("모델 로드 완료: " + classLabels.join(", "));
+    setStatus("", "AI 모델 준비 완료", "마이크로비트를 연결한 뒤 감지를 시작할 수 있습니다.");
+  } catch (err) {
+    $("modelState").textContent = "모델 로드 실패";
+    $("startAI").disabled = true;
+    logEvent("모델 오류: " + (err.message || err));
+    alert("모델을 불러오지 못했습니다.\n모델 URL과 인터넷 연결을 확인하세요.\n\n" + (err.message || err));
+  } finally { $("loadModel").disabled = false; }
+}
+function renderPredictions(predictions) {
+  $("predictions").innerHTML = "";
+  predictions.forEach(p => {
+    const row = document.createElement("div"); row.className = "bar-row";
+    const name = document.createElement("span"); name.textContent = p.label;
+    const track = document.createElement("div"); track.className = "track";
+    const fill = document.createElement("div"); fill.className = "fill";
+    const pct = Math.max(0,Math.min(100,p.probability*100));
+    fill.style.width = pct + "%"; track.appendChild(fill);
+    const value = document.createElement("strong"); value.textContent = pct.toFixed(1) + "%";
+    row.append(name,track,value); $("predictions").appendChild(row);
+  });
+}
+function renderManualButtons() {
+  $("manualButtons").innerHTML = "";
+  classLabels.forEach(label => {
+    const btn = document.createElement("button"); btn.textContent = label;
+    btn.addEventListener("click", () => sendClass(label, true));
+    $("manualButtons").appendChild(btn);
+  });
+}
+function findClass(kind) {
+  return classLabels.find(label => label.trim() === kind) || null;
+}
+function isNoiseLabel(label) { return label === "소음"; }
+function isQuietLabel(label) { return label === "정적"; }
+function isConversationLabel(label) { return label === "대화"; }
+
+async function startAI() {
+  if (!recognizer) return alert("먼저 AI 모델을 불러오세요.");
+  if (listening) return;
+  try {
+    listening = true; lastSentClass = null; pendingNoiseSince = null; clearSince = null;
+    $("startAI").disabled = true; $("stopAI").disabled = false;
+    setStatus("", "마이크 연결 중", "브라우저의 마이크 권한 요청을 확인하세요.");
+    await recognizer.listen(result => {
+      const scores = Array.from(result.scores);
+      const predictions = classLabels.map((label,i) => ({label,probability:scores[i] || 0}));
+      lastScores = predictions;
+      renderPredictions(predictions);
+      const best = predictions.reduce((a,b) => b.probability > a.probability ? b : a, predictions[0]);
+      $("currentClass").textContent = best.label + " (" + (best.probability*100).toFixed(1) + "%)";
+      const threshold = Number($("confidence").value)/100;
+      if (best.probability < threshold) {
+        setStatus("", "확신도 부족", "기준 " + (threshold*100) + "% 미만이므로 제어하지 않습니다.");
+        pendingNoiseSince = null;
+        return;
+      }
+      handlePrediction(best.label);
+    }, {
+      includeSpectrogram: true,
+      probabilityThreshold: 0,
+      invokeCallbackOnNoiseAndUnknown: true,
+      overlapFactor: 0.5
+    });
+    logEvent("소음 감지 시작");
+  } catch (err) {
+    listening = false; $("startAI").disabled = false; $("stopAI").disabled = true;
+    logEvent("마이크 오류: " + (err.message || err));
+    setStatus("alarm", "마이크 연결 실패", "사이트 마이크 권한과 다른 앱의 마이크 사용 여부를 확인하세요.");
+    alert("마이크를 시작하지 못했습니다. 브라우저의 마이크 권한을 확인하세요.\n" + (err.message || err));
+  }
+}
+function stopTestMode() {
+  if (testTimer) { clearInterval(testTimer); testTimer = null; }
+  if (alarmActive) {
+    alarmActive = false; pendingNoiseSince = null; clearSince = null; noiseEventOpen = false;
+    sendClass(findClass("정적") || "정적", false);
+    setStatus("normal", "정상", "테스트를 종료하고 경고를 해제했습니다.");
+  }
+  $("testState").textContent = "테스트 중지됨";
+}
+function startTestMode(label) {
+  stopTestMode();
+  // 테스트는 6초 동안 같은 판정을 반복해 지속 시간 조건을 확인합니다.
+  $("testState").textContent = label + " 상태를 6초 동안 시험 중…";
+  handlePrediction(label);
+  let ticks = 0;
+  testTimer = setInterval(() => {
+    handlePrediction(label);
+    ticks++;
+    if (ticks >= 6) stopTestMode();
+  }, 1000);
+}
+function handlePrediction(label) {
+  const now = Date.now();
+  if (isNoiseLabel(label)) {
+    clearSince = null;
+    if (!noiseEventOpen) { noiseCount++; noiseEventOpen = true; renderRecords(); addRecord(label, "소음 감지"); }
+    if (pendingNoiseSince === null) pendingNoiseSince = now;
+    setStatus("alarm", alarmActive ? "소음 경고 작동 중" : "소음 감지 중", alarmActive ? "경광등과 부저가 작동하도록 명령했습니다." : "지속 시간을 확인하고 있습니다.");
+    if (!alarmActive && now - pendingNoiseSince >= Number($("alarmDelay").value)*1000) {
+      alarmActive = true; alarmCount++; addRecord(label,"경고 시작"); logEvent("지속 소음 감지: 경고 명령 전송");
+      sendClass(label,false);
+    }
+    if (lastSentClass !== label && !alarmActive) { /* Wait for sustained noise before sending. */ }
+    return;
+  }
+  pendingNoiseSince = null;
+  if (alarmActive) {
+    if (clearSince === null) clearSince = now;
+    if (now - clearSince >= Number($("clearDelay").value)*1000) {
+      alarmActive = false; clearSince = null; noiseEventOpen = false;
+      const quietLabel = findClass("정적") || "정적";
+      sendClass(quietLabel,false);
+      addRecord(label,"경고 종료"); logEvent("소음 해제: 경고 종료 명령 전송");
+    }
+  } else clearSince = null;
+  if (isQuietLabel(label)) noiseEventOpen = false;
+
+  if (isQuietLabel(label)) setStatus("normal","정상","조용한 상태로 인식했습니다.");
+  else if (isConversationLabel(label)) setStatus("caution","주의","일반 대화로 인식했습니다. 경광등과 부저는 작동하지 않습니다.");
+  else setStatus("", "인식: " + label, "프로젝트의 세 클래스(정적, 대화, 소음) 외의 클래스입니다.");
+  if (lastSentClass !== label && !alarmActive) {
+    if (isQuietLabel(label)) sendClass(label,false);
+    lastSentClass = label;
+  }
+  addRecord(label,"인식 (" + (lastScores.find(p=>p.label===label)?.probability*100 || 0).toFixed(1) + "%)");
+}
+async function stopAI() {
+  stopTestMode();
+  if (recognizer) { try { await recognizer.stopListening(); } catch (err) { logEvent("인식 중지 알림: " + err.message); } }
+  listening = false; pendingNoiseSince = null; clearSince = null;
+  $("startAI").disabled = !recognizer; $("stopAI").disabled = true;
+  if (alarmActive) { alarmActive = false; await sendClass(findClass("정적") || "정적",false); }
+  setStatus("", "감지 중지", "AI가 더 이상 마이크를 분석하지 않습니다.");
+  logEvent("소음 감지 중지");
+}
+
+async function connectSerial() {
+  if (!("serial" in navigator)) {
+    alert("이 브라우저는 Web Serial을 지원하지 않습니다. 데스크톱 Chrome 또는 Edge의 최신 버전을 사용하세요.");
+    return;
+  }
+  try {
+    serialPort = await navigator.serial.requestPort();
+    await serialPort.open({baudRate:115200});
+    const encoder = new TextEncoderStream();
+    encoder.readable.pipeTo(serialPort.writable).catch(err => logEvent("시리얼 쓰기 스트림 종료: " + err.message));
+    writer = encoder.writable.getWriter();
+    $("serialState").textContent = "USB 연결됨";
+    $("serialDetail").textContent = "115200bps · micro:bit 준비 상태";
+    $("serialLamp").style.background = "#20a45a";
+    $("connectSerial").disabled = true; $("disconnectSerial").disabled = false;
+    logEvent("micro:bit USB 연결 완료");
+  } catch (err) {
+    serialPort = null; writer = null;
+    logEvent("USB 연결 오류: " + (err.message || err));
+    alert("micro:bit 연결에 실패했습니다.\nUSB 케이블, 포트 사용 중인 프로그램, 브라우저 권한을 확인하세요.\n" + (err.message || err));
+  }
+}
+async function sendClass(label, manual) {
+  if (!writer) {
+    logEvent("전송 실패: micro:bit가 연결되지 않았습니다 (" + label + ")");
+    if (manual) alert("먼저 micro:bit를 USB로 연결하세요.");
+    return false;
+  }
+  try {
+    await writer.write(label + "\n");
+    logEvent("전송 완료: " + JSON.stringify(label) + "\\n");
+    if (manual) addRecord(label,"수동 전송");
+    lastSentClass = label;
+    return true;
+  } catch (err) {
+    logEvent("시리얼 전송 오류: " + (err.message || err));
+    $("serialState").textContent = "전송 오류";
+    if (manual) alert("명령 전송에 실패했습니다.\n" + (err.message || err));
+    return false;
+  }
+}
+async function disconnectSerial() {
+  try {
+    if (writer) { await writer.close(); writer = null; }
+    if (serialPort) { await serialPort.close(); serialPort = null; }
+  } catch (err) { logEvent("연결 해제 중 알림: " + err.message); }
+  $("serialState").textContent = "연결되지 않음";
+  $("serialDetail").textContent = "USB 연결이 해제되었습니다.";
+  $("serialLamp").style.background = "#7b8798";
+  $("connectSerial").disabled = false; $("disconnectSerial").disabled = true;
+  logEvent("micro:bit 연결 해제");
+}
+$("loadModel").addEventListener("click",loadModel);
+document.querySelectorAll("[data-test-class]").forEach(button => {
+  button.addEventListener("click", () => startTestMode(button.dataset.testClass));
+});
+$("stopTest").addEventListener("click", stopTestMode);
+$("startAI").addEventListener("click",startAI);
+$("stopAI").addEventListener("click",stopAI);
+$("connectSerial").addEventListener("click",connectSerial);
+$("disconnectSerial").addEventListener("click",disconnectSerial);
+$("confidence").addEventListener("input",()=> $("confidenceText").textContent = $("confidence").value + "%");
+$("manualOff").addEventListener("click",()=>sendClass(findClass("정적") || "정적",true));
+$("manualAlarm").addEventListener("click",()=>sendClass(findClass("소음") || "소음",true));
+$("clearLog").addEventListener("click",()=>{records=[];noiseCount=0;alarmCount=0;renderRecords();logEvent("화면 기록 삭제");});
+if ("serial" in navigator) {
+  navigator.serial.addEventListener("disconnect", event => {
+    if (serialPort && event.target === serialPort) {
+      serialPort = null; writer = null;
+      $("serialState").textContent = "장치 연결 끊김";
+      $("serialDetail").textContent = "USB 케이블을 확인하고 다시 연결하세요.";
+      $("serialLamp").style.background = "#d92d20";
+      $("connectSerial").disabled = false; $("disconnectSerial").disabled = true;
+      logEvent("micro:bit 연결 끊김");
+    }
+  });
+}
+renderRecords();
+</script>
+</body>
+</html>

@@ -72,7 +72,7 @@ button.primary{background:#2463eb;color:#fff}button.danger{background:#c62828;co
 <div class="actions"><button id="connectSerial" class="primary">micro:bit 연결</button><button id="disconnectSerial" disabled>연결 해제</button></div>
 <p class="muted">Web Serial은 HTTPS 또는 localhost에서 지원됩니다. 통신 속도는 115200bps입니다.</p>
 <h3>수동 전송 시험</h3>
-<p class="muted">아래 버튼은 선택한 클래스 이름을 그대로 전송합니다. 모델 클래스 이름과 일치해야 동작합니다.</p>
+<p class="muted">아래 버튼은 선택한 클래스를 micro:bit 명령어 m / t / l로 변환해 전송합니다.</p>
 <div id="manualButtons" class="actions"><span class="muted">먼저 모델을 불러오세요.</span></div>
 <div class="actions"><button id="manualOff">정적 전송 (경고 끄기)</button><button id="manualAlarm" class="danger">소음 전송 (경고 시험)</button></div>
 </section>
@@ -179,12 +179,30 @@ function renderManualButtons() {
     $("manualButtons").appendChild(btn);
   });
 }
-function findClass(kind) {
-  return classLabels.find(label => label.trim() === kind) || null;
+function normalizedLabel(label) {
+  return String(label || "").trim().toLowerCase();
 }
-function isNoiseLabel(label) { return label === "소음"; }
-function isQuietLabel(label) { return label === "정적"; }
-function isConversationLabel(label) { return label === "대화"; }
+function categoryOf(label) {
+  const value = normalizedLabel(label);
+  if (["소음", "class 3"].includes(value)) return "noise";
+  if (["대화", "class 2"].includes(value)) return "conversation";
+  if (["정적", "배경 소음", "background noise", "background_noise", "silence"].includes(value)) return "quiet";
+  return "unknown";
+}
+function findClass(kind) {
+  const wanted = kind === "정적" ? "quiet" : kind === "대화" ? "conversation" : kind === "소음" ? "noise" : "unknown";
+  return classLabels.find(label => categoryOf(label) === wanted) || null;
+}
+function isNoiseLabel(label) { return categoryOf(label) === "noise"; }
+function isQuietLabel(label) { return categoryOf(label) === "quiet"; }
+function isConversationLabel(label) { return categoryOf(label) === "conversation"; }
+function serialCommandForLabel(label) {
+  const category = categoryOf(label);
+  if (category === "quiet") return "m";
+  if (category === "conversation") return "t";
+  if (category === "noise") return "l";
+  return null;
+}
 
 async function startAI() {
   if (!recognizer) return alert("먼저 AI 모델을 불러오세요.");
@@ -272,7 +290,7 @@ function handlePrediction(label) {
   else if (isConversationLabel(label)) setStatus("caution","주의","일반 대화로 인식했습니다. 경광등과 부저는 작동하지 않습니다.");
   else setStatus("", "인식: " + label, "프로젝트의 세 클래스(정적, 대화, 소음) 외의 클래스입니다.");
   if (lastSentClass !== label && !alarmActive) {
-    if (isQuietLabel(label)) sendClass(label,false);
+    if (isQuietLabel(label) || isConversationLabel(label)) sendClass(label,false);
     lastSentClass = label;
   }
   addRecord(label,"인식 (" + (lastScores.find(p=>p.label===label)?.probability*100 || 0).toFixed(1) + "%)");
@@ -315,10 +333,16 @@ async function sendClass(label, manual) {
     if (manual) alert("먼저 micro:bit를 USB로 연결하세요.");
     return false;
   }
+  const command = serialCommandForLabel(label);
+  if (!command) {
+    logEvent("전송 실패: 분류할 수 없는 클래스 이름입니다 (" + label + ")");
+    if (manual) alert("클래스 이름을 확인하세요. 배경 소음, 대화, 소음 또는 기본 이름 Class 2/Class 3을 사용할 수 있습니다.");
+    return false;
+  }
   try {
-    await writer.write(label + "\n");
-    logEvent("전송 완료: " + JSON.stringify(label) + "\\n");
-    if (manual) addRecord(label,"수동 전송");
+    await writer.write(command + "\n");
+    logEvent("전송 완료: " + label + " → " + command + "\n");
+    if (manual) addRecord(label,"수동 전송 (" + command + ")");
     lastSentClass = label;
     return true;
   } catch (err) {

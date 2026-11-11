@@ -186,8 +186,7 @@ function categoryOf(label) {
   const value = normalizedLabel(label);
   if (["소음", "class 3"].includes(value)) return "noise";
   if (["대화", "class 2"].includes(value)) return "conversation";
-  if (["정적", "배경 소음", "background noise", "background_noise", "silence"].includes(value)) return "quiet";
-  return "unknown";
+if (["정적", "배경 소음", "배경음", "background noise", "background_noise", "backgroundnoise", "silence"].includes(value)) return "quiet";  return "unknown";
 }
 function findClass(kind) {
   const wanted = kind === "정적" ? "quiet" : kind === "대화" ? "conversation" : kind === "소음" ? "noise" : "unknown";

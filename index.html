@@ -163,7 +163,12 @@ async function loadModel() {
   } finally { $("loadModel").disabled = false; }
 }
 function renderPredictions(predictions) {
-  $("predictions").innerHTML = "";
+  const container = $("predictions");
+  if (!container) {
+    logEvent("화면 오류: predictions 요소를 찾을 수 없습니다.");
+    return;
+  }
+  container.innerHTML = "";
   predictions.forEach(p => {
     const row = document.createElement("div"); row.className = "bar-row";
     const name = document.createElement("span"); name.textContent = p.label;
@@ -172,17 +177,10 @@ function renderPredictions(predictions) {
     const pct = Math.max(0,Math.min(100,p.probability*100));
     fill.style.width = pct + "%"; track.appendChild(fill);
     const value = document.createElement("strong"); value.textContent = pct.toFixed(1) + "%";
-    row.append(name,track,value); $("predictions").appendChild(row);
+    row.append(name,track,value); container.appendChild(row);
   });
 }
-function renderManualButtons() {
-  $("manualButtons").innerHTML = "";
-  classLabels.forEach(label => {
-    const btn = document.createElement("button"); btn.textContent = label;
-    btn.addEventListener("click", () => sendClass(label, true));
-    $("manualButtons").appendChild(btn);
-  });
-}
+
 function normalizedLabel(label) {
   return String(label || "").trim().toLowerCase();
 }

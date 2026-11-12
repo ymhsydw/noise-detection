@@ -338,7 +338,7 @@ async function sendCommand(command, label, manual) {
     return false;
   }
   try {
-    await writer.write(command + "\\n");
+    await writer.write(command + "\n");
     logEvent("전송 완료: " + label + " → " + command);
     if (manual) addRecord(label,"수동 전송 (" + command + ")");
     lastSentClass = label;
@@ -346,7 +346,7 @@ async function sendCommand(command, label, manual) {
   } catch (err) {
     logEvent("시리얼 전송 오류: " + (err.message || err));
     $("serialState").textContent = "전송 오류";
-    if (manual) alert("명령 전송에 실패했습니다.\\n" + (err.message || err));
+    if (manual) alert("명령 전송에 실패했습니다.\n" + (err.message || err));
     return false;
   }
 }

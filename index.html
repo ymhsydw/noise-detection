@@ -72,9 +72,13 @@ button.primary{background:#2463eb;color:#fff}button.danger{background:#c62828;co
 <div class="actions"><button id="connectSerial" class="primary">micro:bit 연결</button><button id="disconnectSerial" disabled>연결 해제</button></div>
 <p class="muted">Web Serial은 HTTPS 또는 localhost에서 지원됩니다. 통신 속도는 115200bps입니다.</p>
 <h3>수동 전송 시험</h3>
-<p class="muted">아래 버튼은 선택한 클래스를 micro:bit 명령어 m / t / l로 변환해 전송합니다.</p>
-<div id="manualButtons" class="actions"><span class="muted">먼저 모델을 불러오세요.</span></div>
-<div class="actions"><button id="manualOff">정적 전송 (경고 끄기)</button><button id="manualAlarm" class="danger">소음 전송 (경고 시험)</button></div>
+<p class="muted">모델을 불러오지 않아도 시험할 수 있습니다. 먼저 micro:bit에서 B 버튼을 눌러 웹 모드로 전환한 뒤 전송하세요.</p>
+<div class="actions">
+<button type="button" id="manualOff">m · 정적 전송</button>
+<button type="button" id="manualTalk">t · 대화 전송</button>
+<button type="button" id="manualAlarm" class="danger">l · 소음 전송</button>
+</div>
+<p class="muted">정상이라면 B 모드에서 정적·대화·소음에 해당하는 5×5 화면이 각각 표시됩니다.</p>
 </section>
 
 <section class="card">
@@ -327,6 +331,25 @@ async function connectSerial() {
     alert("micro:bit 연결에 실패했습니다.\nUSB 케이블, 포트 사용 중인 프로그램, 브라우저 권한을 확인하세요.\n" + (err.message || err));
   }
 }
+async function sendCommand(command, label, manual) {
+  if (!writer) {
+    logEvent("전송 실패: micro:bit가 연결되지 않았습니다 (" + label + ")");
+    if (manual) alert("먼저 micro:bit 연결 버튼을 눌러 USB 연결을 완료하세요.");
+    return false;
+  }
+  try {
+    await writer.write(command + "\\n");
+    logEvent("전송 완료: " + label + " → " + command);
+    if (manual) addRecord(label,"수동 전송 (" + command + ")");
+    lastSentClass = label;
+    return true;
+  } catch (err) {
+    logEvent("시리얼 전송 오류: " + (err.message || err));
+    $("serialState").textContent = "전송 오류";
+    if (manual) alert("명령 전송에 실패했습니다.\\n" + (err.message || err));
+    return false;
+  }
+}
 async function sendClass(label, manual) {
   if (!writer) {
     logEvent("전송 실패: micro:bit가 연결되지 않았습니다 (" + label + ")");
@@ -373,8 +396,9 @@ $("stopAI").addEventListener("click",stopAI);
 $("connectSerial").addEventListener("click",connectSerial);
 $("disconnectSerial").addEventListener("click",disconnectSerial);
 $("confidence").addEventListener("input",()=> $("confidenceText").textContent = $("confidence").value + "%");
-$("manualOff").addEventListener("click",()=>sendClass(findClass("정적") || "정적",true));
-$("manualAlarm").addEventListener("click",()=>sendClass(findClass("소음") || "소음",true));
+$("manualOff").addEventListener("click",()=>sendCommand("m","정적",true));
+$("manualTalk").addEventListener("click",()=>sendCommand("t","대화",true));
+$("manualAlarm").addEventListener("click",()=>sendCommand("l","소음",true));
 $("clearLog").addEventListener("click",()=>{records=[];noiseCount=0;alarmCount=0;renderRecords();logEvent("화면 기록 삭제");});
 if ("serial" in navigator) {
   navigator.serial.addEventListener("disconnect", event => {

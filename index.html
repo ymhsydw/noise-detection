@@ -281,8 +281,8 @@ function handlePrediction(label) {
     if (clearSince === null) clearSince = now;
     if (now - clearSince >= Number($("clearDelay").value)*1000) {
       alarmActive = false; clearSince = null; noiseEventOpen = false;
-      const quietLabel = findClass("정적") || "정적";
-      sendClass(quietLabel,false);
+      // 소음이 해제되면 현재 인식된 상태(정적 또는 대화)를 micro:bit에 전송
+      sendClass(label,false);
       addRecord(label,"경고 종료"); logEvent("소음 해제: 경고 종료 명령 전송");
     }
   } else clearSince = null;
